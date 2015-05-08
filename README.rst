@@ -15,7 +15,7 @@ Introduction
   ./block_tool.py 			To actually block the listed ip addresses add --block parameter.
   ./block_tool.py -h 			Print this help message.
   ./block_tool.py --ips-by-query <query_name> --index <index_name>	Execute elasticsearch query and block ip addresses. Optinal index name.
-  ./block_tool.py --ips-by-country <country_code>	Get ip list for given country from http://http://www.ipdeny.com/ipblocks/data/countries/.
+  ./block_tool.py --ips-by-country <country_code>	Get ip list for given country from http://www.ipdeny.com/ipblocks/data/countries/.
   ./block_tool.py --ips-by-url <url>	Get ip list to block from given url
   ./block_tool.py --unblock <rule_name> 	Will delete the iptables block rule for the corresponing query.
   ./block_tool.py --unblock-all 		Will flush the complete INPUT chain thus unblocking all ip addresses.
