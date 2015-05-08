@@ -8,19 +8,21 @@ Introduction
 | At the moment, elasticsearch, http://www.ipdeny.com/ipblocks/data/countries/ and general urls are supported as sources.
 | The selected ip addresses will be added to an ipset (which is a requirement for this tool to work) and an iptables rule will be craeted to drop these addresses.
 
-| Usage:
-| ./block_tool.py 			By default nothing will be blocked. Only a list of the ip addresses will be printed out.
-| ./block_tool.py 			To actually block the listed ip addresses add --block parameter.
-| ./block_tool.py -h 			Print this help message.
-| ./block_tool.py --ips-by-query <query_name> --index <index_name>	Execute elasticsearch query and block ip addresses. Optinal index name.
-| ./block_tool.py --ips-by-country <country_code>	Get ip list for given country from http://http://www.ipdeny.com/ipblocks/data/countries/.
-| ./block_tool.py --ips-by-url <url>	Get ip list to block from given url
-| ./block_tool.py --unblock <rule_name> 	Will delete the iptables block rule for the corresponing query.
-| ./block_tool.py --unblock-all 		Will flush the complete INPUT chain thus unblocking all ip addresses.
-| ./block_tool.py --list-queries 		List all available block queries.
-| ./block_tool.py --list-countries 		List all available countries that can be blocked.
-| ./block_tool.py --list-current-active 	List currently active blocking rules.
-| ./block_tool.py --noresolve --list-blocked-ips <rule_name> List currently blocked ip addresses for given rule.
+.. parsed-literal::
+
+  Usage:
+  ./block_tool.py 			By default nothing will be blocked. Only a list of the ip addresses will be printed out.
+  ./block_tool.py 			To actually block the listed ip addresses add --block parameter.
+  ./block_tool.py -h 			Print this help message.
+  ./block_tool.py --ips-by-query <query_name> --index <index_name>	Execute elasticsearch query and block ip addresses. Optinal index name.
+  ./block_tool.py --ips-by-country <country_code>	Get ip list for given country from http://http://www.ipdeny.com/ipblocks/data/countries/.
+  ./block_tool.py --ips-by-url <url>	Get ip list to block from given url
+  ./block_tool.py --unblock <rule_name> 	Will delete the iptables block rule for the corresponing query.
+  ./block_tool.py --unblock-all 		Will flush the complete INPUT chain thus unblocking all ip addresses.
+  ./block_tool.py --list-queries 		List all available block queries.
+  ./block_tool.py --list-countries 		List all available countries that can be blocked.
+  ./block_tool.py --list-current-active 	List currently active blocking rules.
+  ./block_tool.py --noresolve --list-blocked-ips <rule_name> List currently blocked ip addresses for given rule.
 
 ips-by-query
 ''''''''''''
