@@ -6,7 +6,7 @@ Introduction
 
 | A simple block tool to easily block selected ip addresses via different sources.
 | At the moment, elasticsearch, http://www.ipdeny.com/ipblocks/data/countries/ and general urls are supported as sources.
-| The selected ip addresses will be added to an ipset (which is a requirement for this tool to work) and an iptables rule will be craeted to drop these addresses.
+| The selected ip addresses will be added to an ipset (which is a requirement for this tool to work) and an iptables rule will be created to drop these addresses.
 
 .. parsed-literal::
 
