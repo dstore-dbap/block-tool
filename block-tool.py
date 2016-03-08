@@ -17,14 +17,17 @@ resolver.timeout = 1
 resolver.lifetime = 1
 resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 resolve_ipaddress = True
-es_nodes = []
+es_nodes = ["es-01.dbap.de"]
 path_to_queries_file = os.path.dirname(os.path.realpath(__file__))
 now = now = datetime.datetime.now()
-index_name = 'logstash-%d.%02d.%02d' % (now.year, now.month, now.day)
+index_name = 'gambolputty-%d.%02d.%02d' % (now.year, now.month, now.day)
+min_count = 0
 query_name = None
 country_code = None
 ip_list_url = None
 execute_blocking = False
+iptables_action = 'REJECT'
+ip_whitelist = ['62.225.111.26', '172.', '195.137.225', '195.137.224']
 
 countries = {
     "af": "Afghanistan",
@@ -317,10 +320,10 @@ def usage():
     print(sys.argv[0] + ' \t\t\tBy default nothing will be blocked. Only a list of the ip addresses will be printed out.')
     print(sys.argv[0] + ' \t\t\tTo actually block the listed ip addresses add --block parameter.')
     print(sys.argv[0] + ' -h \t\t\tPrint this help message.')
-    print(sys.argv[0] + ' --ips-by-query <query_name> --index <index_name>\tExecute elasticsearch query and block ip addresses. Optinal index name.')
+    print(sys.argv[0] + ' --ips-by-query <query_name> --index <index_name> --min-count <min_hit_count>\tExecute elasticsearch query and block ip addresses. Optinal index name. Optional minimum term count.')
     print(sys.argv[0] + ' --ips-by-country <country_code>\tGet ip list for given country from http://http://www.ipdeny.com/ipblocks/data/countries/.')
     print(sys.argv[0] + ' --ips-by-url <url>\tGet ip list to block from given url')
-    print(sys.argv[0] + ' --unblock <rule_name> \tWill delete the iptables block rule for the corresponing query.')
+    print(sys.argv[0] + ' --unblock <rule_name> \tWill delete the iptables block rule for the corresponding query.')
     print(sys.argv[0] + ' --unblock-all \t\tWill flush the complete INPUT chain thus unblocking all ip addresses.')
     print(sys.argv[0] + ' --list-queries \t\tList all available block queries.')
     print(sys.argv[0] + ' --list-countries \t\tList all available countries that can be blocked.')
@@ -328,10 +331,13 @@ def usage():
     print(sys.argv[0] + ' --noresolve --list-blocked-ips <rule_name> List currently blocked ip addresses for given rule.')
 
 def parseArgs():
-    global index_name, query_name, country_code, ip_list_url, execute_blocking, execute_unblocking, resolve_ipaddress
+    global index_name, query_name, min_count, country_code, ip_list_url, execute_blocking, execute_unblocking, resolve_ipaddress
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "h:", ["noresolve", "help", "index=", "ips-by-query", "ips-by-country=", "ips-by-url=", "block", "unblock=", "unblock-all", "list-queries", "list-countries", "list-current-active", "list-blocked-ips="])
+        opts, args = getopt.getopt(sys.argv[1:], "h:", ["noresolve", "help", "index=", "ips-by-query=", "min-count=", "ips-by-country=", "ips-by-url=", "block", "unblock=", "unblock-all", "list-queries", "list-countries", "list-current-active", "list-blocked-ips="])
     except getopt.GetoptError:
+        usage()
+        sys.exit(255)
+    if len(opts) == 0:
         usage()
         sys.exit(255)
     for opt, arg in opts:
@@ -342,9 +348,10 @@ def parseArgs():
             resolve_ipaddress = False
         elif opt in ("--dryrun"):
             execute_blocking = False
-            query_name = arg
         elif opt in ("--index"):
             index_name = arg
+        elif opt in ("--min-count"):
+            min_count = int(arg)
         elif opt in ("--block"):
             execute_blocking = True
         elif opt in ("--ips-by-query"):
@@ -455,27 +462,29 @@ def executeQuery(es_client, index_name, query):
         sys.exit(255)
     return result
 
-def getIpListFromElasticsearch(query):
+def getIpListFromElasticsearch(query_name, min_term_count=0):
     """
     Get a list of ipaddresses via an elasticsearch query.
-    The query needs to return the ipaddresses as facetted fields in result['facets']['terms']['terms'].
+    The query needs to return the ipaddresses as first aggregated field in result['aggregations'].
     The easiest way to build such a query is to use the kibana facet module and copy the used query via
     the info button of this module.
     """
     es = connect()
     result = executeQuery(es, index_name, elasticsearch_queries.queries[query_name])
     try:
-        hits = len(result['facets']['terms']['terms'])
+        hits = result['aggregations'].itervalues().next()['buckets']
+        hit_count = len(hits)
     except:
         logger.error("The search did not return a correct result. Return value: %s" % result)
         sys.exit(255)
-    if hits == 0:
+    if hit_count == 0:
         logger.warning("The search did not yield any result. Nothing to block.")
         sys.exit()
-    logger.info("Search yielded %d results. Filling block list <%s> with returned ip addresses." % (hits, query_name))
+    logger.info("Search yielded %d results. Filling block list <%s> with returned ip addresses." % (hit_count, query_name))
     ip_addresses = []
-    for term in result['facets']['terms']['terms']:
-        ip_addresses.append(term['term'])
+    for term in hits:
+        if term['doc_count'] > min_term_count:
+            ip_addresses.append(term['key'])
     return ip_addresses
 
 def getIpListFromUrl(url):
@@ -503,7 +512,8 @@ def createIpSetList(set_list_name):
     result = subprocess.Popen("/usr/sbin/ipset list", shell=True, stdout=subprocess.PIPE).stdout.read()
     if "Name: %s" % set_list_name in result:
         # Flush existing set.
-        result = subprocess.Popen("/usr/sbin/ipset flush %s 2>&1" % set_list_name, shell=True, stdout=subprocess.PIPE).stdout.read()
+        #result = subprocess.Popen("/usr/sbin/ipset flush %s 2>&1" % set_list_name, shell=True, stdout=subprocess.PIPE).stdout.read()
+        result = ""
     else:
         # Create new set.
         result = subprocess.Popen("/usr/sbin/ipset -N %s hash:net 2>&1" % set_list_name, shell=True, stdout=subprocess.PIPE).stdout.read()
@@ -537,7 +547,7 @@ def addIptablesBlockRule(set_list_name):
     for line in result.strip().split('\n'):
         if line == set_list_name:
             return
-    result = subprocess.Popen("/sbin/iptables -A INPUT -p tcp -m set --match-set %s src -j DROP 2>&1" % set_list_name, shell=True, stdout=subprocess.PIPE).stdout.read()
+    result = subprocess.Popen("/sbin/iptables -A INPUT -p tcp -m set --match-set %s src -j %s 2>&1" % (set_list_name, iptables_action), shell=True, stdout=subprocess.PIPE).stdout.read()
     if result.strip() != "":
         logger.error("Could not block ipset %s. Error: %s." % (set_list_name, result))
 
@@ -640,11 +650,12 @@ except ImportError:
 
 parseArgs()
 
+ip_addresses = None
 if query_name:
     if query_name not in elasticsearch_queries.queries:
         logger.error('The search name "%s" is not defined in %s/elasticearch_queries.py.' % (sys.argv[2], path_to_queries_file))
         sys.exit(255)
-    ip_addresses = getIpListFromElasticsearch(query_name)
+    ip_addresses = getIpListFromElasticsearch(query_name, min_count)
     rule_name = query_name
 elif country_code:
     country_code, country_name = resolveCountryCode(country_code)
@@ -655,11 +666,18 @@ elif ip_list_url:
     ip_addresses = getIpListFromUrl(ip_list_url)
     rule_name = ip_list_url.rstrip('/').split('/')[-1]
 
+if (query_name or country_code or ip_list_url) and not ip_addresses:
+        logger.error('The search "%s" did not provide any ip addresses. Please check query.' %sys.argv[2] )
+        sys.exit(255)
+
 # Make list unique.
 ip_addresses = list(set(ip_addresses))
 
+# Filter out whitelisted ip addresses.
+ip_addresses = [i for i in ip_addresses if i not in ip_whitelist]
+
 if not execute_blocking:
-    logger.info('The following %d ip addresses would be blocked: (List is limited to to 500)' % len(ip_addresses))
+    logger.info('The following %d ip addresses would be blocked: (List is limited to 500)' % len(ip_addresses))
     listBlockedIpAddresses(ip_addresses)
     sys.exit()
 
@@ -669,5 +687,5 @@ if len(ip_addresses) > 1000:
     hint = " (might take a few seconds...)"
 logger.info("Creating ipset %s with %d entries.%s" % (rule_name, len(ip_addresses), hint))
 addIpAddressesToIpSet(rule_name, ip_addresses)
-logger.info("Adding ipset %s to INPUT chain with DROP action." % rule_name)
+logger.info("Adding ipset %s to INPUT chain with %s action." % (rule_name, iptables_action))
 addIptablesBlockRule(rule_name)
